@@ -35,7 +35,6 @@ minimum_N <- 50
 # Minimum aantal respondenten per cel/percentage
 minimum_N1 <- 0
 
-
 # 3. Definieren regionaam en -code ----------------------------------------
 
 # Pas onderstaande naam en code aan naar de naam en code van je eigen regio.
@@ -69,16 +68,15 @@ setwd("padnaam") # vul voor padnaam de padnaam van de map met data in.
 # om met behulp van de functie file.choose() het bestand te selecteren in de verkenner.
 data <- read_spss(file.choose()) # <- read_spss('Padnaam/Data.sav')
 
-# Inladen Regiobestand
-# Pas in onderstaande code de naam van het bestand aan indien deze anders heet in jouw regio.
-# De regionaam hoef je niet aan te passen, deze wordt automatisch door R ingevuld.
-# En verwijder de # aan het begin van de regel om de code te runnen.
-#data <- read_spss(paste("Regiobestand_CGMJV2022_GGD ", regionaam,"_versie 1.sav", sep = ""))
-
 # Trenddata laden
 data2020 <- read_spss(file.choose()) # <- read_spss('Padnaam/Data2020.sav')
 data2016 <- read_spss(file.choose()) # <- read_spss('Padnaam/Data2016.sav')
 data2012 <- read_spss(file.choose()) # <- read_spss('Padnaam/Data2012.sav')  
+
+# Trenddata inladen vanuit een totaal trendbestand (pas hierbij jaar_variabele aan naar de kolom die het juiste jaar bevat)
+# data2020 <- data %>% filter(jaar_variabele == 2020)
+# data2016 <- data %>% filter(jaar_variabele == 2016)
+# data2012 <- data %>% filter(jaar_variabele == 2012)
 
 # Verzet working directory naar de map  met het Indicatorenoverzicht, de conceptrapportage
 # en dit script. Dit is de map die je in de Handleiding maken rapportage Stap 3 hebt gemaakt.
@@ -158,7 +156,7 @@ input <- ind.overzicht %>%
 # 10. Gemiddeldes berekenen -----------------------------------------------
 
 # Het aanmaken van een functie waarmee gemiddelden kunnen worden berekend
-compute_mean <- function(data, omschrijving, indicator, uitsplitsing, niveau, weegfactor, weighted = T){
+compute_mean <- function(data, indicator, uitsplitsing, niveau, weegfactor, weighted = T){
   
   groepering <- setdiff(c(uitsplitsing, niveau), NA)
   
@@ -184,16 +182,16 @@ compute_mean <- function(data, omschrijving, indicator, uitsplitsing, niveau, we
 }
 
 # De compute_mean functie kan ook worden gebruikt om cijfers voor een enkele indicator te berekenen, bijvoorbeeld:
-# compute_mean(data = data, 
-#              omschrijving = 'Ervaart gezondheid als (zeer) goed', 
-#              indicator = 'KLGGA208', 
-#              uitsplitsing = 'AGGSA202', 
-#              niveau = 'Gemeentecode', 
+# compute_mean(data = data,
+#              indicator = 'KLGGA208',
+#              uitsplitsing = 'AGGSA202',
+#              niveau = 'nederland',
 #              weegfactor = 'ewCBSGGD')
+
 
 # Cijfers voor alle combinaties van indicatoren, uitsplitsingen en niveaus uit het indicatoren overzicht berekenen
 cijfers <- input %>%
-  select(omschrijving, indicator, uitsplitsing, niveau, weegfactor) %>% # selecteren van relevante kolommen
+  select(indicator, uitsplitsing, niveau, weegfactor) %>% # selecteren van relevante kolommen
   pmap(compute_mean, data = data, .progress = T) %>% # compute_mean functie toepassen op het input object
   bind_rows() # output combineren tot een dataframe
 
@@ -257,7 +255,7 @@ responstabeltotaal <- responstabelNL %>%
 # Trendcijfers 2022
 trends2022 <- trends %>%
   filter(trend2022 == 'Ja') %>%
-  select(omschrijving, indicator, niveau, weegfactor = weeg2022) %>%
+  select(indicator, niveau, weegfactor = weeg2022) %>%
   pmap(compute_mean, data = data, uitsplitsing = NA, .progress = T) %>% # compute_mean functie toepassen op het input object
   bind_rows() %>%
   mutate(name = str_replace(name, 'totaal', 'mean')) %>%
@@ -266,12 +264,19 @@ trends2022 <- trends %>%
   setNames(c('niveau', paste0(names(.)[-1], '_2022')))
 
 # Trendcijfers 2020
-# Data mutaties die nodig zijn
+# Aanmaken van niveauvariabelen
 data2020 <-  data2020 %>%
   mutate(totaal = 'totaal', # variabele aanmaken om het totaalgemiddelde te kunnen berekenen
          regio = ifelse(MIREB201 == regiocode, regionaam, NA), # variabele voor de regio aanmaken op basis van de eerder opgegeven regiocode en regionaam
          nederland = 'Nederland',
          Gemeentecode = ifelse(MIREB201 == regiocode, to_character(Gemeentecode), NA))
+
+# Variabelen dichotomiseren uit het trendsoverzicht met een '_' en een getal aan het eind van de indicatornaam 
+if(any(str_detect(trends$indicator, '.+(?=_[0-9]+$)'))){
+  data2020 <- dummy_cols(data2020, 
+                         select_columns = unique(str_extract(trends$indicator[str_detect(trends$indicator, '.+(?=_[0-9]+$)')], '.+(?=_[0-9]+$)')),
+                         ignore_na = T)
+}
 
 # Hercoderen van variabele met 8 = 'nvt' naar 0 zodat de percentages een weergave zijn van de totale groep
 # Dit stukje code geeft een warning die kan worden genegeerd.
@@ -282,10 +287,10 @@ data2020 <- data2020 %>%
                 str_detect('[Nn][\\.]?[Vv][\\.]?[Tt]') %>%
                 trends2012$indicator[.]), list(~recode(., `8`= 0)))
 
-# Berekenen trendcijfers 2020
+# Berekenen trendcijfers
 trends2020 <- trends %>%
   filter(trend2020 == 'Ja') %>%
-  select(omschrijving, indicator, niveau, weegfactor = weeg2020) %>%
+  select(indicator, niveau, weegfactor = weeg2020) %>%
   pmap(compute_mean, data = data, uitsplitsing = NA, .progress = T) %>% # compute_mean functie toepassen op het input object
   bind_rows() %>%
   mutate(name = str_replace(name, 'totaal', 'mean')) %>%
@@ -294,12 +299,20 @@ trends2020 <- trends %>%
   setNames(c('niveau', paste0(names(.)[-1], '_2020')))
 
 # Trendcijfers 2016
-# Data mutaties die nodig zijn
+# Aanmaken van niveauvariabelen
 data2016 <-  data2016 %>%
   mutate(totaal = 'totaal', # variabele aanmaken om het totaalgemiddelde te kunnen berekenen
          regio = ifelse(MIREB201 == regiocode, regionaam, NA), # variabele voor de regio aanmaken op basis van de eerder opgegeven regiocode en regionaam
          nederland = 'Nederland',
          Gemeentecode = ifelse(MIREB201 == regiocode, to_character(Gemeentecode), NA))
+
+# Variabelen dichotomiseren uit het trendsoverzicht met een '_' en een getal aan het eind van de indicatornaam 
+if(any(str_detect(trends$indicator, '.+(?=_[0-9]+$)'))){
+  data2016 <- dummy_cols(data2016, 
+                         select_columns = unique(str_extract(trends$indicator[str_detect(trends$indicator, '.+(?=_[0-9]+$)')], '.+(?=_[0-9]+$)')),
+                         ignore_na = T)
+}
+
 
 # Hercoderen van variabele met 8 = 'nvt' naar 0 zodat de percentages een weergave zijn van de totale groep
 # Dit stukje code geeft een warning die kan worden genegeerd.
@@ -310,7 +323,7 @@ data2016 <- data2016 %>%
                 str_detect('[Nn][\\.]?[Vv][\\.]?[Tt]') %>%
                 trends2012$indicator[.]), list(~recode(., `8`= 0)))
 
-# Berekenen trendcijfers 2016
+# Berekenen trendcijfers
 trends2016 <- trends %>%
   filter(trend2016 == 'Ja') %>%
   select(omschrijving, indicator, niveau, weegfactor = weeg2016) %>%
@@ -322,12 +335,19 @@ trends2016 <- trends %>%
   setNames(c('niveau', paste0(names(.)[-1], '_2016')))
 
 # Trendcijfers 2012
-# Data mutaties die nodig zijn
+# Aanmaken van niveauvariabelen
 data2012 <-  data2012 %>%
   mutate(totaal = 'totaal', # variabele aanmaken om het totaalgemiddelde te kunnen berekenen
          regio = ifelse(MIREB201 == regiocode, regionaam, NA), # variabele voor de regio aanmaken op basis van de eerder opgegeven regiocode en regionaam
          nederland = 'Nederland',
          Gemeentecode = ifelse(MIREB201 == regiocode, to_character(Gemeentecode), NA))
+
+# Variabelen dichotomiseren uit het trendsoverzicht met een '_' en een getal aan het eind van de indicatornaam 
+if(any(str_detect(trends$indicator, '.+(?=_[0-9]+$)'))){
+  data2012 <- dummy_cols(data2012, 
+                         select_columns = unique(str_extract(trends$indicator[str_detect(trends$indicator, '.+(?=_[0-9]+$)')], '.+(?=_[0-9]+$)')),
+                         ignore_na = T)
+}
 
 # Hercoderen van variabele met 8 = 'nvt' naar 0 zodat de percentages een weergave zijn van de totale groep
 # Dit stukje code geeft een warning die kan worden genegeerd.
@@ -338,7 +358,7 @@ data2012 <- data2012 %>%
                 str_detect('[Nn][\\.]?[Vv][\\.]?[Tt]') %>%
                 trends2012$indicator[.]), list(~recode(., `8`= 0)))
 
-# Berekenen trendcijfers 2012
+# Berekenen trendcijfers
 trends2012 <- trends %>%
   filter(trend2012 == 'Ja') %>%
   select(omschrijving, indicator, niveau, weegfactor = weeg2012) %>%
@@ -354,8 +374,8 @@ trends_totaal <- trends2022 %>%
   left_join(trends2020, by = 'niveau') %>%
   left_join(trends2016, by = 'niveau')%>% 
   left_join(trends2012, by = 'niveau')%>% 
-  select(niveau, sort(colnames(.))) %>%
-  mutate_at(vars(-niveau), round, 6)
+  select(niveau, sort(colnames(.))) %>% # sorteren van kolommen op naam
+  mutate_at(vars(-niveau), round, 6) # gemiddelden afronden
 
 
 # 14. Data in excelbestand zetten -----------------------------------------

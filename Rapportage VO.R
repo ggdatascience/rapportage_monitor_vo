@@ -12,18 +12,18 @@
 # Leegmaken environment
 rm(list=ls())
 
-# Packages moeten eenmalig worden geinstalleerd.
-# Verwijder de # aan het begin van regel 15 om de code te runnen en de benodigde packages te installeren
-# install.packages(c('tidyverse', 'readxl', 'openxlsx', 'haven', 'labelled', 'fastDummies))
-
-
 # 1. Laden benodigde packages --------------------------------------------
 
+# Packages moeten eenmalig worden geinstalleerd.
+# Verwijder de # aan het begin van de volgende regel om de code te runnen en de benodigde packages te installeren
+# install.packages(c('tidyverse', 'readxl', 'openxlsx', 'haven', 'labelled', 'fastDummies'))
+
+# Laden van packages
 library(tidyverse) # tidyverse package voor databewerking 
 library(readxl) # voor read_excel()
 library(openxlsx) # voor write.xlsx()
 library(haven) # voor read_spss()
-library(labelled) # voor to_character
+library(labelled) # voor to_character()
 library(fastDummies) # voor dummy_cols()
 
 
@@ -42,11 +42,11 @@ regionaam <- 'GGD Limburg-Noord'
 regiocode <- 23
 
 
-# 4. Data inladen ---------------------------------------------------------
+# 4. Indicatorenoverzicht en data inladen ---------------------------------
 
-# Zet working directory naar de map met data. De working directory is de map waarin R
-# aan het werk is. Hieronder zijn twee manieren genoemd om dit te doen: via code of 
-# via het menu in R-studio.
+# Verzet working directory naar de map  met het Indicatorenoverzicht, de conceptrapportage
+# en dit script. De working directory is de map van waaruit R werkt. Hieronder zijn twee manieren 
+# genoemd om dit te doen: via code of via het menu in R-studio.
 # Via code: 
 setwd("padnaam") # vul voor padnaam de padnaam van de map met data in.
 # LET OP! Gebruik voor de pad naam de forward slash (/) en niet een backward slash (\) zoals Microsoft in de padnaam heeft staan.
@@ -57,40 +57,78 @@ setwd("padnaam") # vul voor padnaam de padnaam van de map met data in.
 # In Console (beneden in het scherm) wordt nu een regel code toegevoegd. Kopieer deze 
 # en plak hieronder. Wanneer je de volgende keer dit script runt, kun je meteen de code 
 # hieronder runnen en hoef je de map niet opnieuw te selecteren.
+setwd("C:") # Vul voor padnaam de padnaam van de map met het Indicatorenoverzicht in.
 
+# Indicatorenoverzicht laden
+ind.overzicht <- read_excel('Indicatoren overzicht.xlsx', sheet = 'indicatoren')
+
+# Indicatorenoverzicht trends laden en regel aanmaken per indicator in de kolom 'niveau'
+trends <- read_excel('Indicatoren overzicht.xlsx', sheet = 'indicatoren trends') %>%
+  mutate(niveau = strsplit(niveau, ", ")) %>%
+  unnest(niveau)
+
+# Zet working directory naar de map met data.
+# Via code: 
+setwd("padnaam") # vul voor padnaam de padnaam van de map met data in.
+# LET OP! Gebruik voor de pad naam de forward slash (/) en niet een backward slash (\) zoals Microsoft in de padnaam heeft staan.
 
 # Inladen Totaalbestand:
 # Als je in de vorige stap een working directory hebt gedefinieerd, hoef je in deze stap
 # alleen de bestandsnaam op te geven (inclusief de bestandsextensie: .sav)
 # Als je geen working directory hebt gedefinieerd, geef dan de volledige padnaam op.
-# LET OP! Gebruik voor de pad naam de forward slash (/) en niet een backward slash (\) zoals Microsoft in de padnaam heeft staan.
 # Naast het opgeven van de bestandsnaam (inclusief padnaam en bestandsextensie) is het ook mogelijk
 # om met behulp van de functie file.choose() het bestand te selecteren in de verkenner.
-data <- read_spss(file.choose()) # <- read_spss('Padnaam/Data.sav')
+# Werk je liever met de padnaam vervang dan file.choose() door 'padnaam/Data 2022.sav'
 
-# Trenddata laden
-data2020 <- read_spss(file.choose()) # <- read_spss('Padnaam/Data2020.sav')
-data2016 <- read_spss(file.choose()) # <- read_spss('Padnaam/Data2016.sav')
-data2012 <- read_spss(file.choose()) # <- read_spss('Padnaam/Data2012.sav')  
+# Alle spss data wordt ingeladen met behulp van read_spss, waarbij het file argument wordt
+# gedefinieerd aan de hand van de padnaam van het bestand. Daarnaast wordt met behulp van
+# het argument col_select alleen de noodzakelijke indicatoren ingeladen. Dit wordt gebaseerd
+# op het indicatorenoverzicht. De niveau variabelen 'nederland', 'regio' worden later in het
+# script aangemaakt. Wil je zelf extra niveauvariabelen toevoegen dan moet je die toevoegen
+# bij het col_select argument. Wil je bijvoorbeeld een variabele 'Subregio' toevoegen dan 
+# kun je die hieronder achter 'Gemeentecode' zetten gevolgd door een komma (,).
 
-# Trenddata inladen vanuit een totaal trendbestand (pas hierbij jaar_variabele aan naar de kolom die het juiste jaar bevat)
+# Data 2022 laden
+data <- read_spss(file = file.choose(), 
+                  col_select = c('MIREB201', 'Gemeentecode',
+                                 ind.overzicht$indicator[ind.overzicht$dichotomiseren == 0],
+                                 ind.overzicht$indicator[ind.overzicht$dichotomiseren == 1] %>% str_match('.+(?=_[0-9]+$)|.+') %>% as.vector() %>% unique(),
+                                 ind.overzicht$uitsplitsing %>% .[is.na(.) == F] %>% str_split(', ') %>% unlist() %>% unique(),
+                                 ind.overzicht$weegfactor %>% unlist() %>% unique()))
+
+# Trenddata 2020 laden
+# Werk je liever met de padnaam vervang dan file.choose() door 'padnaam/Trendbestand 2020 met indicatoren 2022.sav'
+data2020 <- read_spss(file = file.choose(), 
+                      col_select = c('MIREB201', 'Gemeentecode',
+                                     trends$indicator[trends$dichotomiseren == 0 & !is.na(trends$weegfactor2020)] %>% unique(),
+                                     trends$indicator[trends$dichotomiseren == 1 & !is.na(trends$weegfactor2020)] %>% str_match('.+(?=_[0-9]+$)|.+') %>% as.vector() %>% unique(),
+                                     trends$weegfactor2020 %>% unique() %>% setdiff(NA)))
+
+# Trenddata 2016 laden
+# Werk je liever met de padnaam vervang dan file.choose() door 'padnaam/Trendbestand 2016 met indicatoren 2022.sav'
+data2016 <- read_spss(file = file.choose(),
+                      col_select = c('MIREB201', 'Gemeentecode',
+                                     trends$indicator[trends$dichotomiseren == 0 & !is.na(trends$weegfactor2016)] %>% unique(),
+                                     trends$indicator[trends$dichotomiseren == 1 & !is.na(trends$weegfactor2016)] %>% str_match('.+(?=_[0-9]+$)|.+') %>% as.vector() %>% unique(),
+                                     trends$weegfactor2016 %>% unique() %>% setdiff(NA)))
+
+# Trenddata 2012 laden
+# Werk je liever met de padnaam vervang dan file.choose() door 'padnaam/Trendbestand 2012 met indicatoren 2022.sav'
+data2012 <- read_spss(file = file.choose(),
+                      col_select = c('MIREB201', 'Gemeentecode',
+                                     trends$indicator[trends$dichotomiseren == 0 & !is.na(trends$weegfactor2012)] %>% unique(),
+                                     trends$indicator[trends$dichotomiseren == 1 & !is.na(trends$weegfactor2012)] %>% str_match('.+(?=_[0-9]+$)|.+') %>% as.vector() %>% unique(),
+                                     trends$weegfactor2012 %>% unique() %>% setdiff(NA)))
+
+# Werk je vanuit een trendbestand met data voor alle jaren dan kun je de data uit je totaalbestand filteren.
+# Pas hierbij de indicator jaar_variabele aan naar de kolom die het jaartal bevat.
 # data2020 <- data %>% filter(jaar_variabele == 2020)
 # data2016 <- data %>% filter(jaar_variabele == 2016)
 # data2012 <- data %>% filter(jaar_variabele == 2012)
+# data <- data %>% filter(jaar_variabele == 2022)
 
-# Verzet working directory naar de map  met het Indicatorenoverzicht, de conceptrapportage
-# en dit script. Dit is de map die je in de Handleiding maken rapportage Stap 3 hebt gemaakt.
-# Dit kan op dezelfde manieren als uitgelegd vanaf regel 48.
-setwd("C:") # Vul voor padnaam de padnaam van de map met het Indicatorenoverzicht in.
-
-# Indicatorenoverzicht laden
-ind.overzicht <- read_excel('Indicatoren overzicht.xlsx')
-
-# Indicatorenoverzicht trends laden en regel aanmaken per indicator in de kolom 'niveau'
-trends <- read_excel('Indicatoren overzicht.xlsx', sheet = 'trends') %>%
-  mutate(niveau = strsplit(niveau, ", ")) %>%
-  unnest(niveau)
-
+# Inladen responsbestand
+responsbestand <- read_spss(file.choose()) # <- read_spss('Padnaam/Datarespons.sav')
 
 # 5. Databewerkingen uitvoeren --------------------------------------------
 data <-  data %>%
@@ -100,35 +138,16 @@ data <-  data %>%
          Gemeentecode = ifelse(MIREB201 == regiocode, to_character(Gemeentecode), NA))
 
 
-# 6. Indicatorencheck -----------------------------------------------------
-
-# Check of de indicatoren, uitsplitsingen en niveaus uit het indicatorenoverzicht voorkomen in de data
-{
-  c(ind.overzicht$indicator %>% str_match('.+(?=_[0-9]$)|.+') %>% as.vector() %>% unique(),
-    ind.overzicht$uitsplitsing %>% .[is.na(.) == F] %>% str_split(', ') %>% unlist() %>% unique(),
-    ind.overzicht$niveau %>% .[is.na(.) == F] %>% str_split(', ') %>% unlist() %>% unique()) -> ind.test
-  
-  if(all(ind.test %in% colnames(data)) == T) {
-    cat("Alle indicatoren in het indicatorenoverzicht komen voor in de data, het script kan verder worden uitgevoerd.")
-    } else {
-    print(data.frame(`De volgende indicatoren ontbreken in het databestand:` = ind.test[ind.test %in% names(data) == F], check.names = F))
-    }
-
-  rm(ind.test)  
-}
-
-
-# 7. Dichotomiseren -------------------------------------------------------
+# 6. Dichotomiseren -------------------------------------------------------
 
 # Variabelen dichotomiseren die in het indicatorenoverzicht met een '_' en een getal in de indicatornaam 
-if(any(str_detect(ind.overzicht$indicator, '.+(?=_[0-9]+$)'))){
+if(any(ind.overzicht$dichotomiseren == 1)){
   data <- dummy_cols(data, 
-                     select_columns = unique(str_extract(ind.overzicht$indicator[str_detect(ind.overzicht$indicator, '.+(?=_[0-9]+$)')], '.+(?=_[0-9]+$)')),
+                     select_columns = unique(str_extract(ind.overzicht$indicator[ind.overzicht$dichotomiseren == 1], '.+(?=_[0-9]+$)')),
                      ignore_na = T)
 }
 
-
-# 8. Hercoderen -----------------------------------------------------------
+# 7. Hercoderen -----------------------------------------------------------
 
 # Hercoderen van variabele met 8 = 'nvt' naar 0 zodat de percentages een weergave zijn van de totale groep
 # Dit stukje code geeft een warning die kan worden genegeerd.
@@ -140,7 +159,7 @@ data <- data %>%
                 ind.overzicht$indicator[.]), list(~recode(., `8`= 0)))
 
 
-# 9. Tabel aanmaken -------------------------------------------------------
+# 8. Tabel aanmaken -------------------------------------------------------
 
 # Het aanmaken van een tabel met elke opgegeven combinatie van indicator, uitsplitsing en niveau.
 # Deze tabel vormt de input op basis waarvan de gemiddelden worden berekend.
@@ -153,7 +172,7 @@ input <- ind.overzicht %>%
   select(-opmerkingen)
 
 
-# 10. Gemiddeldes berekenen -----------------------------------------------
+# 9. Gemiddeldes berekenen -----------------------------------------------
 
 # Het aanmaken van een functie waarmee gemiddelden kunnen worden berekend
 compute_mean <- function(data, indicator, uitsplitsing, niveau, weegfactor, weighted = T){
@@ -192,7 +211,7 @@ compute_mean <- function(data, indicator, uitsplitsing, niveau, weegfactor, weig
 # Cijfers voor alle combinaties van indicatoren, uitsplitsingen en niveaus uit het indicatoren overzicht berekenen
 cijfers <- input %>%
   select(indicator, uitsplitsing, niveau, weegfactor) %>% # selecteren van relevante kolommen
-  pmap(compute_mean, data = data, .progress = T) %>% # compute_mean functie toepassen op het input object
+  pmap(compute_mean, data = data) %>% # compute_mean functie toepassen op het input object
   bind_rows() # output combineren tot een dataframe
 
 # Namen van uitsplitsingen verkorten en afronden op 6 decimalen
@@ -215,50 +234,15 @@ output <- cijfers %>%
   mutate_at(vars(-1), round, 6) # output afronden op 6 decimalen (om de output leesbaarder te maken, maar geen dubbele afrondingsfouten te introduceren)
 
 
-# 12. Respons data toevoegen ---------------------------------------------------
-# Inladen responsbestand
-responsbestand <- read_spss(file.choose()) # <- read_spss('Padnaam/Datarespons.sav')
-
-responsdata <-  responsbestand %>%
-        mutate( totaal = 'totaal', # variabele aanmaken om het totaalgemiddelde te kunnen berekenen
-         regio = ifelse(MIREB201 == regiocode, regionaam, NA), # variabele voor de regio aanmaken op basis van de eerder opgegeven regiocode en regionaam
-         nederland = 'Nederland',
-         Gemeentecode = ifelse(MIREB201 == regiocode, to_character(Gemeentecode), NA))
-
-# Behouden van de benodigde variabelen
-respons <- responsdata %>% 
-  select (Respons_nettodich, Respons_netto, Gemeentecode, regio, totaal, nederland)
-
-# Per gewenst niveau een respons tabel maken
-responstabelGM <- respons %>%
-  group_by(Gemeentecode)%>%
-  summarise(Respons_perc = mean(Respons_nettodich), respons_aantal = length(which(Respons_nettodich==1))) %>%
-  rename(niveaurp=Gemeentecode)
-responstabelRG <- respons %>%
-  group_by(regio)%>%
-  summarise(Respons_perc = mean(Respons_nettodich), respons_aantal = length(which(Respons_nettodich==1))) %>%
-  rename(niveaurp=regio) 
-responstabelNL <- respons %>%
-  group_by(nederland)%>%
-  summarise(Respons_perc = mean(Respons_nettodich), respons_aantal = length(which(Respons_nettodich==1))) %>%
-  rename(niveaurp=nederland)
-      
-# Combineren van de responstabellen tot een
-responstabeltotaal <- responstabelNL %>%
-  rbind(responstabelRG)%>%
-  rbind(responstabelGM) %>%
-  drop_na()
-
-
-# 13. Trendcijfers --------------------------------------------------------
+# 10. Trendcijfers --------------------------------------------------------
 
 # Trendcijfers 2022
 trends2022 <- trends %>%
-  filter(trend2022 == 'Ja') %>%
-  select(indicator, niveau, weegfactor = weeg2022) %>%
-  pmap(compute_mean, data = data, uitsplitsing = NA, .progress = T) %>% # compute_mean functie toepassen op het input object
+  filter(!is.na(trends$weegfactor2022)) %>%
+  select(indicator, niveau, weegfactor = weegfactor2022) %>%
+  pmap(compute_mean, data = data, uitsplitsing = NA) %>% # compute_mean functie toepassen op het input object
   bind_rows() %>%
-  mutate(name = str_replace(name, 'totaal', 'mean')) %>%
+  mutate(name = str_replace(name, '_totaal', '')) %>%
   pivot_wider(names_from = name, values_from = value, values_fn = function(x) first(na.omit(x))) %>% # draaien van de output naar wide format
   mutate_at(vars(-1), round, 6) %>%
   setNames(c('niveau', paste0(names(.)[-1], '_2022')))
@@ -271,29 +255,31 @@ data2020 <-  data2020 %>%
          nederland = 'Nederland',
          Gemeentecode = ifelse(MIREB201 == regiocode, to_character(Gemeentecode), NA))
 
-# Variabelen dichotomiseren uit het trendsoverzicht met een '_' en een getal aan het eind van de indicatornaam 
-if(any(str_detect(trends$indicator, '.+(?=_[0-9]+$)'))){
-  data2020 <- dummy_cols(data2020, 
-                         select_columns = unique(str_extract(trends$indicator[str_detect(trends$indicator, '.+(?=_[0-9]+$)')], '.+(?=_[0-9]+$)')),
+# Variabelen dichotomiseren die in het indicatorenoverzicht met een '_' en een getal in de indicatornaam 
+if(any(trends$dichotomiseren == 1 & !is.na(trends$weegfactor2020))){
+  data2020 <- dummy_cols(data2020,
+                         select_columns = unique(str_extract(trends$indicator[trends$dichotomiseren == 1 & !is.na(trends$weegfactor2020)], '.+(?=_[0-9]+$)')),
                          ignore_na = T)
 }
+
 
 # Hercoderen van variabele met 8 = 'nvt' naar 0 zodat de percentages een weergave zijn van de totale groep
 # Dit stukje code geeft een warning die kan worden genegeerd.
 data2020 <- data2020 %>%
   mutate_at(c(data2020 %>%
-                select(trends2012$indicator) %>%
+                select(unique(trends$indicator[!is.na(trends$weegfactor2020)])) %>%
                 val_labels() %>%
                 str_detect('[Nn][\\.]?[Vv][\\.]?[Tt]') %>%
-                trends2012$indicator[.]), list(~recode(., `8`= 0)))
+                unique(trends$indicator[!is.na(trends$weegfactor2020)])[.]), 
+            list(~recode(., `8`= 0)))
 
 # Berekenen trendcijfers
 trends2020 <- trends %>%
-  filter(trend2020 == 'Ja') %>%
-  select(indicator, niveau, weegfactor = weeg2020) %>%
-  pmap(compute_mean, data = data, uitsplitsing = NA, .progress = T) %>% # compute_mean functie toepassen op het input object
+  filter(!is.na(trends$weegfactor2020)) %>%
+  select(indicator, niveau, weegfactor = weegfactor2020) %>%
+  pmap(compute_mean, data = data2020, uitsplitsing = NA) %>% # compute_mean functie toepassen op het input object
   bind_rows() %>%
-  mutate(name = str_replace(name, 'totaal', 'mean')) %>%
+  mutate(name = str_replace(name, '_totaal', '')) %>%
   pivot_wider(names_from = name, values_from = value, values_fn = function(x) first(na.omit(x))) %>% # draaien van de output naar wide format
   mutate_at(vars(-1), round, 6) %>%
   setNames(c('niveau', paste0(names(.)[-1], '_2020')))
@@ -306,10 +292,10 @@ data2016 <-  data2016 %>%
          nederland = 'Nederland',
          Gemeentecode = ifelse(MIREB201 == regiocode, to_character(Gemeentecode), NA))
 
-# Variabelen dichotomiseren uit het trendsoverzicht met een '_' en een getal aan het eind van de indicatornaam 
-if(any(str_detect(trends$indicator, '.+(?=_[0-9]+$)'))){
-  data2016 <- dummy_cols(data2016, 
-                         select_columns = unique(str_extract(trends$indicator[str_detect(trends$indicator, '.+(?=_[0-9]+$)')], '.+(?=_[0-9]+$)')),
+# Variabelen dichotomiseren die in het indicatorenoverzicht met een '_' en een getal in de indicatornaam 
+if(any(trends$dichotomiseren == 1 & !is.na(trends$weegfactor2016))){
+  data2016 <- dummy_cols(data2016,
+                         select_columns = unique(str_extract(trends$indicator[trends$dichotomiseren == 1 & !is.na(trends$weegfactor2016)], '.+(?=_[0-9]+$)')),
                          ignore_na = T)
 }
 
@@ -318,18 +304,19 @@ if(any(str_detect(trends$indicator, '.+(?=_[0-9]+$)'))){
 # Dit stukje code geeft een warning die kan worden genegeerd.
 data2016 <- data2016 %>%
   mutate_at(c(data2016 %>%
-                select(trends2012$indicator) %>%
+                select(unique(trends$indicator[!is.na(trends$weegfactor2016)])) %>%
                 val_labels() %>%
                 str_detect('[Nn][\\.]?[Vv][\\.]?[Tt]') %>%
-                trends2012$indicator[.]), list(~recode(., `8`= 0)))
+                unique(trends$indicator[!is.na(trends$weegfactor2016)])[.]), 
+            list(~recode(., `8`= 0)))
 
 # Berekenen trendcijfers
 trends2016 <- trends %>%
-  filter(trend2016 == 'Ja') %>%
-  select(omschrijving, indicator, niveau, weegfactor = weeg2016) %>%
-  pmap(compute_mean, data = data, uitsplitsing = NA, .progress = T) %>% # compute_mean functie toepassen op het input object
+  filter(!is.na(trends$weegfactor2016)) %>%
+  select(indicator, niveau, weegfactor = weegfactor2016) %>%
+  pmap(compute_mean, data = data2016, uitsplitsing = NA) %>% # compute_mean functie toepassen op het input object
   bind_rows() %>%
-  mutate(name = str_replace(name, 'totaal', 'mean')) %>%
+  mutate(name = str_replace(name, '_totaal', '')) %>%
   pivot_wider(names_from = name, values_from = value, values_fn = function(x) first(na.omit(x))) %>% # draaien van de output naar wide format
   mutate_at(vars(-1), round, 6) %>%
   setNames(c('niveau', paste0(names(.)[-1], '_2016')))
@@ -342,10 +329,10 @@ data2012 <-  data2012 %>%
          nederland = 'Nederland',
          Gemeentecode = ifelse(MIREB201 == regiocode, to_character(Gemeentecode), NA))
 
-# Variabelen dichotomiseren uit het trendsoverzicht met een '_' en een getal aan het eind van de indicatornaam 
-if(any(str_detect(trends$indicator, '.+(?=_[0-9]+$)'))){
-  data2012 <- dummy_cols(data2012, 
-                         select_columns = unique(str_extract(trends$indicator[str_detect(trends$indicator, '.+(?=_[0-9]+$)')], '.+(?=_[0-9]+$)')),
+# Variabelen dichotomiseren die in het indicatorenoverzicht met een '_' en een getal in de indicatornaam 
+if(any(trends$dichotomiseren == 1 & !is.na(trends$weegfactor2012))){
+  data2012 <- dummy_cols(data2012,
+                         select_columns = unique(str_extract(trends$indicator[trends$dichotomiseren == 1 & !is.na(trends$weegfactor2012)], '.+(?=_[0-9]+$)')),
                          ignore_na = T)
 }
 
@@ -353,21 +340,23 @@ if(any(str_detect(trends$indicator, '.+(?=_[0-9]+$)'))){
 # Dit stukje code geeft een warning die kan worden genegeerd.
 data2012 <- data2012 %>%
   mutate_at(c(data2012 %>%
-                select(trends2012$indicator) %>%
+                select(unique(trends$indicator[!is.na(trends$weegfactor2012)])) %>%
                 val_labels() %>%
                 str_detect('[Nn][\\.]?[Vv][\\.]?[Tt]') %>%
-                trends2012$indicator[.]), list(~recode(., `8`= 0)))
+                unique(trends$indicator[!is.na(trends$weegfactor2012)])[.]), 
+            list(~recode(., `8`= 0)))
 
 # Berekenen trendcijfers
 trends2012 <- trends %>%
-  filter(trend2012 == 'Ja') %>%
-  select(omschrijving, indicator, niveau, weegfactor = weeg2012) %>%
-  pmap(compute_mean, data = data, uitsplitsing = NA, .progress = T) %>% # compute_mean functie toepassen op het input object
+  filter(!is.na(trends$weegfactor2012)) %>%
+  select(indicator, niveau, weegfactor = weegfactor2012) %>%
+  pmap(compute_mean, data = data2012, uitsplitsing = NA) %>% # compute_mean functie toepassen op het input object
   bind_rows() %>%
-  mutate(name = str_replace(name, 'totaal', 'mean')) %>%
+  mutate(name = str_replace(name, '_totaal', '')) %>%
   pivot_wider(names_from = name, values_from = value, values_fn = function(x) first(na.omit(x))) %>% # draaien van de output naar wide format
   mutate_at(vars(-1), round, 6) %>%
   setNames(c('niveau', paste0(names(.)[-1], '_2012')))
+
 
 # Samenvoegen van alle trenddata 
 trends_totaal <- trends2022 %>%
@@ -378,7 +367,41 @@ trends_totaal <- trends2022 %>%
   mutate_at(vars(-niveau), round, 6) # gemiddelden afronden
 
 
-# 14. Data in excelbestand zetten -----------------------------------------
+# 11. Respons data bewerken -----------------------------------------------
+
+# Aanmaken niveau variabelen
+responsdata <-  responsbestand %>%
+  mutate(totaal = 'totaal', # variabele aanmaken om het totaalgemiddelde te kunnen berekenen
+         regio = ifelse(MIREB201 == regiocode, regionaam, NA), # variabele voor de regio aanmaken op basis van de eerder opgegeven regiocode en regionaam
+         nederland = 'Nederland',
+         GEMEENTECODE = ifelse(MIREB201 == regiocode, to_character(GEMEENTECODE), NA))
+
+# Behouden van de benodigde variabelen
+respons <- responsdata %>% 
+  select(Respons_nettodich, Respons_netto, GEMEENTECODE, regio, totaal, nederland)
+
+# Per gewenst niveau een respons tabel maken
+responstabelGM <- respons %>%
+  group_by(GEMEENTECODE)%>%
+  summarise(Respons_perc = mean(Respons_nettodich, na.rm = T), respons_aantal = length(which(Respons_nettodich==1))) %>%
+  rename(niveaurp=GEMEENTECODE)
+responstabelRG <- respons %>%
+  group_by(regio)%>%
+  summarise(Respons_perc = mean(Respons_nettodich, na.rm = T), respons_aantal = length(which(Respons_nettodich==1))) %>%
+  rename(niveaurp=regio) 
+responstabelNL <- respons %>%
+  group_by(nederland)%>%
+  summarise(Respons_perc = mean(Respons_nettodich, na.rm = T), respons_aantal = length(which(Respons_nettodich==1))) %>%
+  rename(niveaurp=nederland)
+
+# Combineren van de responstabellen tot een
+responstabeltotaal <- responstabelNL %>%
+  rbind(responstabelRG)%>%
+  rbind(responstabelGM) %>%
+  drop_na()
+
+
+# 12. Data in excelbestand zetten -----------------------------------------
 
 # Data exporteren naar excelbestand met rapportage
 # Als er geen working directory is gedefinieerd of bestanden bevinden zich buiten de working 
